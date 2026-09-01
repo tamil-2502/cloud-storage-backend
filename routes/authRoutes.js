@@ -2,7 +2,8 @@ const express = require("express");
 
 const {
   register,
-  login
+  login,
+  resetOwnerPassword
 } = require("../controllers/authController");
 
 const authMiddleware = require("../middleware/authMiddleware");
@@ -14,7 +15,7 @@ const router = express.Router();
 router.post("/register", register);
 
 router.post("/login", login);
-
+router.post("/reset-password", resetOwnerPassword);
 router.get("/me", authMiddleware, async (req, res) => {
   try {
     const { data: user, error } = await supabase

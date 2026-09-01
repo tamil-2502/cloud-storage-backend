@@ -1,6 +1,10 @@
 const jwt = require("jsonwebtoken");
+const bcrypt = require("bcryptjs");
 const supabase = require("../config/supabase");
 
+// =========================
+// REGISTER
+// =========================
 const register = async (req, res) => {
   try {
     const { email, password, name } = req.body;
@@ -20,7 +24,7 @@ const register = async (req, res) => {
       });
     }
 
-    // Check whether user already exists
+    // Check if user already exists in users table
     const { data: existingUser, error: existingError } = await supabase
       .from("users")
       .select("id")
@@ -41,7 +45,9 @@ const register = async (req, res) => {
       });
     }
 
-    // Create Supabase Auth user
+    // =========================
+    // CREATE USER IN SUPABASE AUTH
+    // =========================
     const { data: authData, error: authError } =
       await supabase.auth.admin.createUser({
         email,
@@ -58,19 +64,28 @@ const register = async (req, res) => {
 
     const userId = authData.user.id;
 
-    // Save profile in users table
+    // =========================
+    // HASH PASSWORD
+    // =========================
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // =========================
+    // CREATE USER PROFILE
+    // =========================
     const { data: user, error: userError } = await supabase
       .from("users")
       .insert({
         id: userId,
-        email,
-        name
+        email: email,
+        name: name,
+        password: hashedPassword
       })
-      .select()
+      .select("id, name, email, created_at")
       .single();
 
+    // If profile creation fails,
+    // delete the Auth user
     if (userError) {
-      // Remove auth user if profile creation fails
       await supabase.auth.admin.deleteUser(userId);
 
       return res.status(500).json({
@@ -79,7 +94,9 @@ const register = async (req, res) => {
       });
     }
 
-    // Create JWT
+    // =========================
+    // CREATE JWT
+    // =========================
     const token = jwt.sign(
       {
         id: user.id,
@@ -91,7 +108,9 @@ const register = async (req, res) => {
       }
     );
 
-    // Store JWT in httpOnly cookie
+    // =========================
+    // STORE TOKEN IN COOKIE
+    // =========================
     res.cookie("token", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
@@ -99,7 +118,10 @@ const register = async (req, res) => {
       maxAge: 24 * 60 * 60 * 1000
     });
 
-    res.status(201).json({
+    // =========================
+    // RESPONSE
+    // =========================
+    return res.status(201).json({
       success: true,
       message: "Registration successful",
       user: {
@@ -112,14 +134,18 @@ const register = async (req, res) => {
   } catch (error) {
     console.error("Register error:", error);
 
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
-      message: "Server error"
+      message: "Server error",
+      error: error.message
     });
   }
 };
 
 
+// =========================
+// LOGIN
+// =========================
 const login = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -132,7 +158,9 @@ const login = async (req, res) => {
       });
     }
 
-    // Find user in users table
+    // =========================
+    // FIND USER
+    // =========================
     const { data: user, error: userError } = await supabase
       .from("users")
       .select("*")
@@ -153,21 +181,24 @@ const login = async (req, res) => {
       });
     }
 
-    // Verify password through Supabase Auth
-    const { data: authData, error: authError } =
-      await supabase.auth.signInWithPassword({
-        email,
-        password
-      });
+    // =========================
+    // COMPARE PASSWORD
+    // =========================
+    const passwordMatch = await bcrypt.compare(
+      password,
+      user.password
+    );
 
-    if (authError || !authData.user) {
+    if (!passwordMatch) {
       return res.status(401).json({
         success: false,
         message: "Invalid email or password"
       });
     }
 
-    // Create application JWT
+    // =========================
+    // CREATE JWT
+    // =========================
     const token = jwt.sign(
       {
         id: user.id,
@@ -179,7 +210,9 @@ const login = async (req, res) => {
       }
     );
 
-    // Store JWT in httpOnly cookie
+    // =========================
+    // STORE TOKEN IN COOKIE
+    // =========================
     res.cookie("token", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
@@ -187,7 +220,10 @@ const login = async (req, res) => {
       maxAge: 24 * 60 * 60 * 1000
     });
 
-    res.json({
+    // =========================
+    // RESPONSE
+    // =========================
+    return res.json({
       success: true,
       message: "Login successful",
       user: {
@@ -200,6 +236,92 @@ const login = async (req, res) => {
   } catch (error) {
     console.error("Login error:", error);
 
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message
+    });
+  }
+};
+
+const resetOwnerPassword = async (req, res) => {
+  try {
+    const { email, newPassword } = req.body;
+
+    if (!email || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Email and new password are required"
+      });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must be at least 6 characters"
+      });
+    }
+
+    // Find user in users table
+    const { data: user, error: findError } = await supabase
+      .from("users")
+      .select("id, email")
+      .eq("email", email)
+      .maybeSingle();
+
+    if (findError) {
+      return res.status(500).json({
+        success: false,
+        message: findError.message
+      });
+    }
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    // Update password in users table
+    const { error: updateError } = await supabase
+      .from("users")
+      .update({
+        password: hashedPassword
+      })
+      .eq("id", user.id);
+
+    if (updateError) {
+      return res.status(500).json({
+        success: false,
+        message: updateError.message
+      });
+    }
+
+    // Update password in Supabase Auth
+    const { error: authError } =
+      await supabase.auth.admin.updateUserById(user.id, {
+        password: newPassword
+      });
+
+    if (authError) {
+      return res.status(500).json({
+        success: false,
+        message: authError.message
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Password updated successfully"
+    });
+
+  } catch (error) {
+    console.error("Reset password error:", error);
+
     res.status(500).json({
       success: false,
       message: "Server error"
@@ -207,8 +329,10 @@ const login = async (req, res) => {
   }
 };
 
+// EXPORT
 
 module.exports = {
   register,
-  login
+  login,
+  resetOwnerPassword
 };

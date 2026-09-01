@@ -7,6 +7,12 @@ const supabase = require("./config/supabase");
 const authRoutes = require("./routes/authRoutes");
 const fileRoutes = require("./routes/fileRoutes");
 const folderRoutes = require("./routes/folderRoutes");
+const shareRoutes = require("./routes/shareRoutes");
+const searchRoutes = require("./routes/searchRoutes");
+const starRoutes = require("./routes/starRoutes");
+const versionRoutes = require("./routes/versionRoutes");
+const publicLinkRoutes = require("./routes/publicLinkRoutes");
+const signedUrlRoutes = require("./routes/signedUrlRoutes");
 
 const app = express();
 
@@ -16,6 +22,12 @@ app.use(cookieParser());
 app.use("/api/files", fileRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/folders", folderRoutes);
+app.use("/api/shares", shareRoutes);
+app.use("/api/search", searchRoutes);
+app.use("/api/stars", starRoutes);
+app.use("/api/versions", versionRoutes);
+app.use("/api/public-links", publicLinkRoutes);
+app.use("/api/signed-urls", signedUrlRoutes);
 
 // Basic test
 app.get("/", (req, res) => {
