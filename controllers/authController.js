@@ -196,42 +196,43 @@ const login = async (req, res) => {
       });
     }
 
-    // =========================
-    // CREATE JWT
-    // =========================
-    const token = jwt.sign(
-      {
-        id: user.id,
-        email: user.email
-      },
-      process.env.JWT_SECRET,
-      {
-        expiresIn: "1d"
-      }
-    );
+   // =========================
+// GENERATE JWT TOKEN
+// =========================
+const token = jwt.sign(
+  {
+    id: user.id,
+    email: user.email,
+    role: user.role
+  },
+  process.env.JWT_SECRET,
+  { expiresIn: "7d" }
+);
 
-    // =========================
-    // STORE TOKEN IN COOKIE
-    // =========================
-    res.cookie("token", token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 24 * 60 * 60 * 1000
-    });
+// =========================
+// STORE TOKEN IN COOKIE
+// =========================
+res.cookie("token", token, {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "lax",
+  maxAge: 7 * 24 * 60 * 60 * 1000
+});
 
-    // =========================
-    // RESPONSE
-    // =========================
-    return res.json({
-      success: true,
-      message: "Login successful",
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email
-      }
-    });
+// =========================
+// RESPONSE
+// =========================
+return res.json({
+  success: true,
+  message: "Login successful",
+  token,
+  user: {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role
+  }
+});
 
   } catch (error) {
     console.error("Login error:", error);
