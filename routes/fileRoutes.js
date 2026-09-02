@@ -5,6 +5,89 @@ const multer = require("multer");
 const upload = multer({
     storage: multer.memoryStorage()
 });
+// UPLOAD NEW FILE
+router.post("/upload", upload.single("file"), async (req, res) => {
+    try {
+        const { ownerId, folderId } = req.body;
+
+        if (!ownerId) {
+            return res.status(400).json({
+                success: false,
+                message: "ownerId is required"
+            });
+        }
+
+        if (!req.file) {
+            return res.status(400).json({
+                success: false,
+                message: "File is required"
+            });
+        }
+
+        const crypto = require("crypto");
+        const fileId = crypto.randomUUID();
+
+        const storageKey =
+            `users/${ownerId}/files/${fileId}-${req.file.originalname}`;
+
+        const { error: uploadError } = await supabase.storage
+            .from("media-files")
+            .upload(storageKey, req.file.buffer, {
+                contentType: req.file.mimetype || "application/octet-stream",
+                upsert: false
+            });
+
+        if (uploadError) {
+            return res.status(500).json({
+                success: false,
+                message: "Failed to upload file",
+                error: uploadError.message
+            });
+        }
+
+        const { data: file, error: dbError } = await supabase
+            .from("files")
+            .insert({
+                id: fileId,
+                owner_id: ownerId,
+                folder_id: folderId || null,
+                name: req.file.originalname,
+                size_bytes: req.file.size,
+                mime_type: req.file.mimetype,
+                storage_key: storageKey,
+                is_deleted: false
+            })
+            .select()
+            .single();
+
+        if (dbError) {
+            await supabase.storage
+                .from("media-files")
+                .remove([storageKey]);
+
+            return res.status(500).json({
+                success: false,
+                message: "Failed to save file metadata",
+                error: dbError.message
+            });
+        }
+
+        return res.status(201).json({
+            success: true,
+            message: "File uploaded successfully",
+            file
+        });
+
+    } catch (error) {
+        console.error("Upload file error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Server error",
+            error: error.message
+        });
+    }
+});
 // GET all files of a user
 router.get("/", async (req, res) => {
     try {
