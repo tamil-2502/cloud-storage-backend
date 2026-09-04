@@ -321,6 +321,133 @@ router.delete("/:id", async (req, res) => {
         });
     }
 });
+// PERMANENTLY DELETE FILE FROM TRASH
+router.delete("/:id/permanent", async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { ownerId } = req.body;
+
+        if (!ownerId) {
+            return res.status(400).json({
+                success: false,
+                message: "ownerId is required"
+            });
+        }
+
+        // Check deleted file
+        const { data: file, error: fileError } = await supabase
+            .from("files")
+            .select("*")
+            .eq("id", id)
+            .eq("owner_id", ownerId)
+            .eq("is_deleted", true)
+            .single();
+
+        if (fileError || !file) {
+            return res.status(404).json({
+                success: false,
+                message: "Deleted file not found"
+            });
+        }
+
+        // Get all versions
+        const { data: versions, error: versionsError } = await supabase
+            .from("file_versions")
+            .select("storage_key")
+            .eq("file_id", id);
+
+        if (versionsError) {
+            return res.status(500).json({
+                success: false,
+                message: "Failed to fetch file versions",
+                error: versionsError.message
+            });
+        }
+
+        // Delete version files from Supabase Storage
+        if (versions && versions.length > 0) {
+            const versionPaths = versions
+                .map(version => version.storage_key)
+                .filter(Boolean);
+
+            if (versionPaths.length > 0) {
+                await supabase.storage
+                    .from("media-files")
+                    .remove(versionPaths);
+            }
+
+            // Delete version records
+            const { error: deleteVersionsError } = await supabase
+                .from("file_versions")
+                .delete()
+                .eq("file_id", id);
+
+            if (deleteVersionsError) {
+                return res.status(500).json({
+                    success: false,
+                    message: "Failed to delete file versions",
+                    error: deleteVersionsError.message
+                });
+            }
+        }
+
+        // Delete public links
+        await supabase
+            .from("public_links")
+            .delete()
+            .eq("file_id", id);
+
+        // Delete shares
+        await supabase
+            .from("shares")
+            .delete()
+            .eq("resource_id", id);
+
+        // Delete main file from Storage
+        if (file.storage_key) {
+            const { error: storageError } = await supabase.storage
+                .from("media-files")
+                .remove([file.storage_key]);
+
+            if (storageError) {
+                return res.status(500).json({
+                    success: false,
+                    message: "Failed to delete file from storage",
+                    error: storageError.message
+                });
+            }
+        }
+
+        // Delete file record permanently
+        const { error: deleteFileError } = await supabase
+            .from("files")
+            .delete()
+            .eq("id", id)
+            .eq("owner_id", ownerId);
+
+        if (deleteFileError) {
+            return res.status(500).json({
+                success: false,
+                message: "Failed to permanently delete file",
+                error: deleteFileError.message
+            });
+        }
+
+        return res.json({
+            success: true,
+            message: "File permanently deleted"
+        });
+
+    } catch (error) {
+        console.error("Permanent delete error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Server error",
+            error: error.message
+        });
+    }
+});
 // GET TRASH FILES
 router.get("/trash/list", async (req, res) => {
     try {
