@@ -460,12 +460,13 @@ router.get("/trash/list", async (req, res) => {
             });
         }
 
-        const { data, error } = await supabase
-            .from("files")
-            .select("*")
-            .eq("owner_id", ownerId)
-            .eq("is_deleted", true)
-            .order("updated_at", { ascending: false });
+       const { data, error } = await supabase
+    .from("files")
+    .select("*")
+    .eq("owner_id", ownerId)
+    .is("folder_id", null)
+    .eq("is_deleted", false)
+    .order("created_at", { ascending: false });
 
         if (error) {
             return res.status(500).json({
